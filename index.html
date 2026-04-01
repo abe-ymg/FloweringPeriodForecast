@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌸 桜開花予想アプリ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #fff0f3 0%, #fff9f0 100%); min-height: 100vh; padding: 20px; }
+  h1 { text-align: center; color: #c9184a; font-size: 24px; margin-bottom: 4px; }
+  .subtitle { text-align: center; color: #aaa; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 12px #f4a26130; }
+  .notice { display: inline-block; background: #fff3cd; color: #856404; padding: 4px 14px; border-radius: 20px; font-size: 12px; margin-bottom: 16px; }
+  select { padding: 6px 14px; border-radius: 20px; border: 1.5px solid #f4a261; font-size: 14px; color: #333; outline: none; cursor: pointer; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 18px; border-radius: 20px; border: none; cursor: pointer; font-size: 13px; background: transparent; color: #888; transition: all 0.2s; }
+  .tab.active { background: #e85d75; color: #fff; font-weight: bold; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  canvas { max-height: 280px; }
+  .predict-box { max-width: 360px; }
+  .slider-label { font-size: 13px; color: #555; margin-bottom: 6px; }
+  input[type=range] { width: 100%; accent-color: #e85d75; margin-bottom: 4px; }
+  .slider-range { display: flex; justify-content: space-between; font-size: 11px; color: #aaa; margin-bottom: 16px; }
+  .btn-predict { width: 100%; padding: 12px; background: linear-gradient(135deg, #e85d75, #f4a261); color: #fff; border: none; border-radius: 24px; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .result-box { margin-top: 24px; text-align: center; background: linear-gradient(135deg, #fff0f3, #fff9f0); border-radius: 16px; padding: 24px; display: none; }
+  .result-label { font-size: 13px; color: #888; }
+  .result-date { font-size: 40px; font-weight: bold; color: #c9184a; margin: 8px 0; }
+  .result-note { font-size: 12px; color: #aaa; }
+  .regression-note { font-size: 12px; color: #888; text-align: center; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 8px 12px; background: #fff0f3; color: #c9184a; font-weight: bold; border-bottom: 2px solid #ffd6e0; text-align: center; }
+  td { padding: 7px 12px; text-align: center; }
+  tr:nth-child(even) td { background: #fff9f0; }
+  .bloom-td { color: #e85d75; font-weight: bold; }
+  h3 { font-size: 15px; color: #333; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div style="text-align:center;font-size:36px;margin-bottom:4px">🌸</div>
+<h1>桜開花予想アプリ</h1>
+<p class="subtitle">気象データをもとに開花時期を予測します</p>
+
+<div id="notice-wrap" style="text-align:center;display:none">
+  <span class="notice">⚠️ サンプルデータを表示中 — CSV_URL を GitHub の raw URL に変更してください</span>
+</div>
+
+<!-- 地点選択 -->
+<div class="card" style="display:flex;align-items:center;gap:12px">
+  <span style="font-size:13px;color:#888">📍 地点を選択：</span>
+  <select id="locationSelect"></select>
+</div>
+
+<!-- タブ -->
+<div class="card">
+  <div class="tabs">
+    <button class="tab active" data-tab="trend">📈 年次トレンド</button>
+    <button class="tab" data-tab="scatter">🔵 気温と開花日の関係</button>
+    <button class="tab" data-tab="predict">🔮 開花日を予測</button>
+  </div>
+
+  <!-- トレンド -->
+  <div id="tab-trend" class="tab-content active">
+    <h3 id="trend-title">年次トレンド</h3>
+    <canvas id="trendChart"></canvas>
+  </div>
+
+  <!-- 散布図 -->
+  <div id="tab-scatter" class="tab-content">
+    <h3 id="scatter-title">3月平均気温 vs 開花日</h3>
+    <canvas id="scatterChart"></canvas>
+    <p id="regression-note" class="regression-note"></p>
+  </div>
+
+  <!-- 予測 -->
+  <div id="tab-predict" class="tab-content">
+    <h3 id="predict-title">開花日を予測</h3>
+    <div class="predict-box">
+      <p class="slider-label">3月の予想平均気温: <strong id="tempVal">10.0</strong>℃</p>
+      <input type="range" id="tempSlider" min="6" max="14" step="0.1" value="10.0">
+      <div class="slider-range"><span>6℃</span><span>14℃</span></div>
+      <button class="btn-predict" onclick="predict()">🌸 開花日を予測する</button>
+    </div>
+    <div class="result-box" id="resultBox">
+      <div class="result-label">予測開花日</div>
+      <div class="result-date" id="resultDate"></div>
+      <div class="result-note" id="resultNote"></div>
+    </div>
+  </div>
+</div>
+
+<!-- データテーブル -->
+<div class="card">
+  <h3 id="table-title">元データ</h3>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>年</th><th>開花日(DOY)</th><th>開花日(日付)</th><th>2月気温(℃)</th><th>3月気温(℃)</th></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ★ GitHubのCSV raw URLに変更してください
+const CSV_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/sakura.csv";
+
+const SAMPLE = [
+  {location:"東京",year:2015,bloom_doy:88,avg_temp_feb:6.2,avg_temp_mar:10.1},
+  {location:"東京",year:2016,bloom_doy:91,avg_temp_feb:7.1,avg_temp_mar:9.8},
+  {location:"東京",year:2017,bloom_doy:94,avg_temp_feb:5.8,avg_temp_mar:9.2},
+  {location:"東京",year:2018,bloom_doy:82,avg_temp_feb:7.8,avg_temp_mar:11.5},
+  {location:"東京",year:2019,bloom_doy:86,avg_temp_feb:7.2,avg_temp_mar:10.8},
+  {location:"東京",year:2020,bloom_doy:83,avg_temp_feb:8.1,avg_temp_mar:11.2},
+  {location:"東京",year:2021,bloom_doy:85,avg_temp_feb:7.5,avg_temp_mar:10.5},
+  {location:"東京",year:2022,bloom_doy:90,avg_temp_feb:6.0,avg_temp_mar:9.5},
+  {location:"東京",year:2023,bloom_doy:84,avg_temp_feb:7.9,avg_temp_mar:11.0},
+  {location:"大阪",year:2015,bloom_doy:85,avg_temp_feb:7.0,avg_temp_mar:11.0},
+  {location:"大阪",year:2016,bloom_doy:88,avg_temp_feb:7.8,avg_temp_mar:10.5},
+  {location:"大阪",year:2017,bloom_doy:91,avg_temp_feb:6.5,avg_temp_mar:10.0},
+  {location:"大阪",year:2018,bloom_doy:79,avg_temp_feb:8.5,avg_temp_mar:12.0},
+  {location:"大阪",year:2019,bloom_doy:83,avg_temp_feb:7.9,avg_temp_mar:11.5},
+  {location:"大阪",year:2020,bloom_doy:80,avg_temp_feb:8.8,avg_temp_mar:12.2},
+  {location:"大阪",year:2021,bloom_doy:82,avg_temp_feb:8.2,avg_temp_mar:11.8},
+  {location:"大阪",year:2022,bloom_doy:87,avg_temp_feb:6.8,avg_temp_mar:10.2},
+  {location:"大阪",year:2023,bloom_doy:81,avg_temp_feb:8.6,avg_temp_mar:11.9},
+];
+
+let allData = [], currentLocation = "", trendChartInst = null, scatterChartInst = null;
+
+function doyToDate(doy, yr=2024) {
+  const d = new Date(yr, 0, doy);
+  return `${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function linReg(pts) {
+  const n = pts.length; if(n<2) return null;
+  const xm = pts.reduce((s,p)=>s+p.x,0)/n, ym = pts.reduce((s,p)=>s+p.y,0)/n;
+  const num = pts.reduce((s,p)=>s+(p.x-xm)*(p.y-ym),0);
+  const den = pts.reduce((s,p)=>s+(p.x-xm)**2,0);
+  if(!den) return null;
+  const a = num/den, b = ym - a*xm;
+  return { a, b, pred: x => a*x+b };
+}
+
+function getFiltered() {
+  return allData.filter(d=>d.location===currentLocation).sort((a,b)=>a.year-b.year);
+}
+
+function renderTrend() {
+  const fd = getFiltered();
+  document.getElementById("trend-title").textContent = `📅 ${currentLocation} の開花日・気温の推移`;
+  if(trendChartInst) trendChartInst.destroy();
+  trendChartInst = new Chart(document.getElementById("trendChart"), {
+    data: {
+      labels: fd.map(d=>d.year),
+      datasets: [
+        { type:"line", label:"開花日(DOY)", data: fd.map(d=>d.bloom_doy), borderColor:"#e85d75", backgroundColor:"#e85d7520", yAxisID:"y1", tension:0.3, pointRadius:4 },
+        { type:"line", label:"3月平均気温(℃)", data: fd.map(d=>d.avg_temp_mar), borderColor:"#f4a261", backgroundColor:"#f4a26120", yAxisID:"y2", tension:0.3, pointRadius:4 },
+      ]
+    },
+    options: {
+      responsive:true, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{position:"top"}, tooltip:{callbacks:{label: ctx => ctx.dataset.yAxisID==="y1" ? `${ctx.parsed.y}日目 (${doyToDate(ctx.parsed.y)})` : `${ctx.parsed.y}℃` }}},
+      scales:{
+        y1:{position:"left", title:{display:true,text:"開花日(DOY)"}},
+        y2:{position:"right", title:{display:true,text:"気温(℃)"}, grid:{drawOnChartArea:false}}
+      }
+    }
+  });
+}
+
+function renderScatter() {
+  const fd = getFiltered();
+  document.getElementById("scatter-title").textContent = `3月平均気温 vs 開花日（${currentLocation}）`;
+  const pts = fd.map(d=>({x:d.avg_temp_mar, y:d.bloom_doy}));
+  const model = linReg(pts);
+  const xs = pts.map(p=>p.x), xMin=Math.min(...xs)-0.3, xMax=Math.max(...xs)+0.3;
+  const regLine = model ? [{x:xMin,y:model.pred(xMin)},{x:xMax,y:model.pred(xMax)}] : [];
+  if(scatterChartInst) scatterChartInst.destroy();
+  scatterChartInst = new Chart(document.getElementById("scatterChart"), {
+    data: {
+      datasets: [
+        { type:"scatter", label:"実績データ", data:pts, backgroundColor:"#e85d75cc", pointRadius:6 },
+        { type:"line", label:"回帰直線", data:regLine, borderColor:"#f4a261", borderWidth:2, pointRadius:0, fill:false },
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ tooltip:{ callbacks:{ label: ctx => ctx.datasetIndex===0 ? `気温:${ctx.parsed.x}℃ / 開花日:${doyToDate(ctx.parsed.y)}` : "" }}},
+      scales:{
+        x:{title:{display:true,text:"3月平均気温(℃)"}},
+        y:{title:{display:true,text:"開花日(DOY)"}}
+      }
+    }
+  });
+  if(model) document.getElementById("regression-note").textContent = `回帰式: 開花日 = ${model.a.toFixed(2)} × 3月気温 + ${model.b.toFixed(2)}`;
+}
+
+function renderTable() {
+  const fd = getFiltered();
+  document.getElementById("table-title").textContent = `📋 ${currentLocation} の元データ`;
+  document.getElementById("tableBody").innerHTML = fd.map((d,i)=>`
+    <tr>
+      <td>${d.year}</td><td>${d.bloom_doy}</td>
+      <td class="bloom-td">${doyToDate(d.bloom_doy)}</td>
+      <td>${d.avg_temp_feb}</td><td>${d.avg_temp_mar}</td>
+    </tr>`).join("");
+}
+
+function predict() {
+  const temp = parseFloat(document.getElementById("tempSlider").value);
+  const fd = getFiltered();
+  const model = linReg(fd.map(d=>({x:d.avg_temp_mar,y:d.bloom_doy})));
+  if(!model) return;
+  const doy = Math.round(model.pred(temp));
+  document.getElementById("resultDate").textContent = `🌸 ${doyToDate(doy)}`;
+  document.getElementById("resultNote").textContent = `3月気温 ${temp}℃ の場合（線形回帰モデル）`;
+  document.getElementById("resultBox").style.display = "block";
+}
+
+function onLocationChange() {
+  currentLocation = document.getElementById("locationSelect").value;
+  renderTrend(); renderScatter(); renderTable();
+  document.getElementById("resultBox").style.display = "none";
+}
+
+function init(data) {
+  allData = data;
+  const locs = [...new Set(data.map(d=>d.location))];
+  const sel = document.getElementById("locationSelect");
+  locs.forEach(l => { const o = document.createElement("option"); o.value=l; o.textContent=l; sel.appendChild(o); });
+  currentLocation = locs[0];
+  sel.addEventListener("change", onLocationChange);
+  onLocationChange();
+}
+
+// スライダー
+document.getElementById("tempSlider").addEventListener("input", function() {
+  document.getElementById("tempVal").textContent = parseFloat(this.value).toFixed(1);
+});
+
+// タブ切り替え
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
+    this.classList.add("active");
+    document.getElementById("tab-"+this.dataset.tab).classList.add("active");
+  });
+});
+
+// CSV読み込み
+if(CSV_URL.includes("YOUR_USERNAME")) {
+  document.getElementById("notice-wrap").style.display = "block";
+  init(SAMPLE);
+} else {
+  Papa.parse(CSV_URL, {
+    download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
+    complete: r => init(r.data),
+    error: () => { document.getElementById("notice-wrap").style.display="block"; init(SAMPLE); }
+  });
+}
+</script>
+</body>
+</html>
